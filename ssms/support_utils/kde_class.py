@@ -76,7 +76,16 @@ class LogKDE:
             t_vals = np.unique(simulator_data["metadata"]["t"])
             if t_vals.shape[0] != 1:
                 raise ValueError("Multiple t values in simulator data. Can't shift.")
-            self.displace_t_val: float = t_vals[0]
+            # Displace by the model's admissibility boundary: t - st for
+            # models with trial-to-trial ndt variability (real density lives
+            # in [t - st, t]), falling back to t for models with no t_dist,
+            # where the boundary genuinely is t.
+            try:
+                self.displace_t_val: float = _recover_admissibility_boundary(
+                    simulator_data["metadata"]
+                )
+            except ValueError:
+                self.displace_t_val = float(t_vals[0])
 
         self._attach_data_from_simulator(simulator_data)
         self._generate_base_kdes(
@@ -551,3 +560,43 @@ def bandwidth_silverman(
 
     result: np.float64 = np.power((4 / (3 * n)), 1 / 5) * std
     return result
+
+
+def _recover_admissibility_boundary(metadata: dict) -> float:
+    """Recover the true admissibility boundary rt = t - st for a *_st model.
+
+    'st' is not stored as its own metadata key - it is folded into
+    metadata['t_dist'], a functools.partial of scipy.stats.uniform.rvs with
+    loc=-st, scale=2*st, so the ndt window is Uniform(t - st, t + st) and the
+    boundary is t + loc = t - st.
+
+    Raises ValueError when the boundary cannot be recovered (multiple t values,
+    or a model with no t_dist, i.e. not a *_st model).
+    """
+    t_vals = np.unique(metadata["t"])
+    if t_vals.shape[0] != 1:
+        raise ValueError("Multiple t values in simulator data. Can't recover boundary.")
+    t = float(t_vals[0])
+
+    # Two metadata shapes carry st, depending on the model:
+    #  * ddm_st / ddm_sz_st fold st INTO metadata['t_dist'] (a functools.partial of
+    #    uniform.rvs with loc=-st, scale=2*st), and st itself is absent.
+    #  * full_ddm / full_ddm2 keep 'st' as a plain numeric metadata entry and emit
+    #    no t_dist at all.
+    # Reading only t_dist is why full_ddm was previously recorded as unfixable.
+    if "st" in metadata:
+        st_vals = np.unique(metadata["st"])
+        if st_vals.shape[0] != 1:
+            raise ValueError("Multiple st values in simulator data.")
+        return t - float(st_vals[0])
+
+    t_dist = metadata.get("t_dist", None)
+    if t_dist is None or not hasattr(t_dist, "keywords"):
+        raise ValueError(
+            "metadata has neither 'st' nor a functools.partial 't_dist' - "
+            "boundary recovery only supports models carrying st."
+        )
+    loc = t_dist.keywords.get("loc", None)
+    if loc is None:
+        raise ValueError("metadata['t_dist'] has no 'loc' keyword.")
+    return t + float(np.asarray(loc).ravel()[0])
