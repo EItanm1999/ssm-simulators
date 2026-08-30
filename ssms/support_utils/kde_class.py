@@ -457,6 +457,13 @@ class LogKDE:
         n = len(simulator_data["choices"])
         self.data = {"rts": [], "log_rts": [], "choices": [], "choice_proportions": []}
 
+        # Optional: callers that pad/oversample the per-choice rts/choices
+        # arrays (e.g. stratified sampling that gives a rare choice a larger
+        # KDE support without changing its true marginal probability) can
+        # supply the true per-choice proportions here, bypassing the
+        # raw-count-derived `len(rts_tmp) / n` below.
+        choice_proportions_override = simulator_data.get("choice_proportions_override")
+
         # Loop through the choices made to get proportions and separated out rts
         if "log_rts" in simulator_data and ("rts" not in simulator_data):
             simulator_data["rts"] = (
@@ -490,7 +497,10 @@ class LogKDE:
                     np.exp(log_rts_tmp[log_rts_tmp != filter_rts]) - self.displace_t_val
                 )
 
-            prop_tmp = len(rts_tmp) / n
+            if choice_proportions_override is not None:
+                prop_tmp = float(choice_proportions_override[c])
+            else:
+                prop_tmp = len(rts_tmp) / n
             self.data["choices"].append(c)
 
             self.data["log_rts"].append(
