@@ -63,6 +63,7 @@ class LogKDE:
         bandwidth_type: str = "silverman",
         auto_bandwidth: bool = True,
         displace_t: bool = False,
+        alternate_choice_p: np.ndarray | Iterable[float] | None = None,
     ):
         """Initialize LogKDE class.
 
@@ -76,13 +77,25 @@ class LogKDE:
                 If False, bandwidths must be set manually. Defaults to True.
             displace_t: Whether to shift RTs by the t parameter from metadata.
                 Only works if all trials have the same t value. Defaults to False.
+            alternate_choice_p: Choice proportions to use in place of the ones implied by the
+                counts in simulator_data, one per choice, ordered as np.unique(metadata
+                ['possible_choices']). (Note 'alternate' here refers to 'alternative' to the
+                'empirical' choice proportions, matching kde_sample.) Callers that pad or
+                oversample the per-choice RT arrays (e.g. stratified sampling that gives a rare
+                choice a larger KDE support) pass the true proportions here, so that padding
+                changes only KDE resolution and not the choice probabilities. Any iterable is
+                accepted, including a one-shot generator. Defaults to None, which uses the
+                empirical proportions.
 
         Raises:
         -------
             AssertionError: If displace_t is True but metadata contains multiple t values.
+            ValueError: If alternate_choice_p does not have one entry per choice, or has an
+                entry that is negative or non-finite, or does not sum to 1.
         """
         self.simulator_info = simulator_data["metadata"]
         self.displace_t: bool = displace_t
+        self.alternate_choice_p = alternate_choice_p
 
         if self.displace_t:
             t_vals = np.unique(simulator_data["metadata"]["t"])
@@ -481,6 +494,44 @@ class LogKDE:
         n = len(simulator_data["choices"])
         self.data = {"rts": [], "log_rts": [], "choices": [], "choice_proportions": []}
 
+        # `self.alternate_choice_p`, when supplied, replaces the count-derived
+        # proportions below. It is positionally aligned to `choices`, so it is
+        # validated once here rather than per choice inside the loop.
+        alternate_choice_p: list[float] | None = None
+        if self.alternate_choice_p is not None:
+            # Any `Iterable[float]` is accepted, so materialise a non-array
+            # iterable first: `np.asarray` raises TypeError on a generator. This
+            # is the only read of the attribute, so a one-shot iterable is safe.
+            # Arrays are passed through, as in `kde_sample`.
+            proportions = np.asarray(
+                self.alternate_choice_p
+                if isinstance(self.alternate_choice_p, np.ndarray)
+                else list(self.alternate_choice_p),
+                dtype=float,
+            ).ravel()
+            if len(proportions) != len(choices):
+                raise ValueError(
+                    "alternate_choice_p must be of the same length as the number of "
+                    f"choices: expected {len(choices)} entries, ordered as "
+                    f"{choices.tolist()}, got {len(proportions)}."
+                )
+            # An exact 0 is allowed, because both consumers handle it: kde_eval's
+            # log(0) = -inf is clamped to `lb`, a well-formed "this choice never
+            # happens", and kde_sample allocates that choice no samples and skips
+            # it. Negative and non-finite entries are handled by neither: kde_eval
+            # returns nan, and kde_sample's allocation goes negative, which
+            # overflows the preallocated sample arrays elsewhere.
+            if not np.all(np.isfinite(proportions)) or np.any(proportions < 0):
+                raise ValueError(
+                    "alternate_choice_p entries must be finite and non-negative, "
+                    f"and sum to 1, got {proportions.tolist()}."
+                )
+            if not np.isclose(proportions.sum(), 1.0):
+                raise ValueError(
+                    f"alternate_choice_p must sum to 1, got {proportions.sum()}."
+                )
+            alternate_choice_p = proportions.tolist()
+
         # Loop through the choices made to get proportions and separated out rts
         if "log_rts" in simulator_data and ("rts" not in simulator_data):
             simulator_data["rts"] = (
@@ -502,7 +553,7 @@ class LogKDE:
                 + "rts or log_rts or both as keys!"
             )
 
-        for c in choices:
+        for i, c in enumerate(choices):
             rts_tmp = simulator_data["rts"][simulator_data["choices"] == c]
             log_rts_tmp = simulator_data["log_rts"][simulator_data["choices"] == c]
 
@@ -514,7 +565,10 @@ class LogKDE:
                     np.exp(log_rts_tmp[log_rts_tmp != filter_rts]) - self.displace_t_val
                 )
 
-            prop_tmp = len(rts_tmp) / n
+            if alternate_choice_p is not None:
+                prop_tmp = alternate_choice_p[i]
+            else:
+                prop_tmp = len(rts_tmp) / n
             self.data["choices"].append(c)
 
             # Retain only samples usable as log-RT KDE input: not the omission

@@ -179,3 +179,77 @@ def test_single_retained_rt_falls_back_to_std_n_1_bandwidth():
     assert kde.data["rts"][idx].shape[0] == 1
     assert np.isclose(kde.bandwidths[idx], bandwidth_silverman(np.array([np.log(0.6)])))
     assert np.isclose(kde.bandwidths[idx], 10.592238410488122)
+
+
+def _padded_data():
+    """Data padded to a 50/50 count split, whose true proportions are 10/90."""
+    return {
+        "rts": np.array([0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2]),
+        "choices": np.array([1, -1, 1, -1, 1, -1, 1, -1]),
+        "metadata": {"max_t": 20.0, "possible_choices": [-1, 1]},
+    }
+
+
+def test_choice_proportions_from_counts():
+    """Without alternate_choice_p, proportions come from the raw counts."""
+    kde = LogKDE(simulator_data=_padded_data())
+    assert kde.data["choices"] == [-1, 1]
+    assert kde.data["choice_proportions"] == [0.5, 0.5]
+
+
+def test_alternate_choice_p_replaces_counts():
+    """alternate_choice_p is used verbatim, positionally aligned to the choices."""
+    kde = LogKDE(simulator_data=_padded_data(), alternate_choice_p=[0.1, 0.9])
+    assert kde.data["choices"] == [-1, 1]
+    assert kde.data["choice_proportions"] == [0.1, 0.9]
+
+
+def test_alternate_choice_p_accepts_generator():
+    """A one-shot generator is materialised, matching the list input exactly."""
+    from_list = LogKDE(simulator_data=_padded_data(), alternate_choice_p=[0.1, 0.9])
+    from_gen = LogKDE(
+        simulator_data=_padded_data(),
+        alternate_choice_p=(p for p in [0.1, 0.9]),
+    )
+    assert from_gen.data["choice_proportions"] == from_list.data["choice_proportions"]
+    assert from_gen.data["choice_proportions"] == [0.1, 0.9]
+
+
+def test_alternate_choice_p_length_mismatch():
+    """One entry per choice is required."""
+    with pytest.raises(
+        ValueError, match="must be of the same length as the number of choices"
+    ):
+        LogKDE(simulator_data=_padded_data(), alternate_choice_p=[1.0])
+
+
+def test_alternate_choice_p_not_normalized():
+    """Proportions that do not sum to 1 are rejected, not silently rescaled."""
+    with pytest.raises(ValueError, match="must sum to 1"):
+        LogKDE(simulator_data=_padded_data(), alternate_choice_p=[0.9, 0.9])
+
+
+def test_alternate_choice_p_negative_entry():
+    """A negative proportion is rejected, rather than making kde_eval return nan."""
+    with pytest.raises(ValueError, match="must be finite and non-negative"):
+        LogKDE(simulator_data=_padded_data(), alternate_choice_p=[-0.1, 1.1])
+
+
+def test_alternate_choice_p_non_finite_entry():
+    """A non-finite proportion is rejected before the sum check reports it as nan."""
+    with pytest.raises(ValueError, match="must be finite and non-negative"):
+        LogKDE(simulator_data=_padded_data(), alternate_choice_p=[np.nan, 1.0])
+
+
+def test_alternate_choice_p_zero_entry_allowed():
+    """An exact 0 is allowed: kde_eval clamps log(0) to lb, kde_sample skips it."""
+    kde = LogKDE(simulator_data=_padded_data(), alternate_choice_p=[0.0, 1.0])
+    assert kde.data["choice_proportions"] == [0.0, 1.0]
+
+    logp = kde.kde_eval({"rts": np.array([0.6, 0.8]), "choices": np.array([-1, 1])})
+    assert np.isclose(logp[0], -66.774)
+    assert np.isfinite(logp[1])
+
+    samples = kde.kde_sample(n_samples=100, random_state=0)
+    assert np.all(samples["choices"] == 1)
+    assert np.all(np.isfinite(samples["log_rts"]))
