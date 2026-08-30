@@ -64,10 +64,10 @@ class LogKDE:
                 If False, bandwidths must be set manually. Defaults to True.
             displace_t: Whether to shift RTs by the admissibility boundary that
                 `_recover_admissibility_boundary` recovers from metadata: t - st
-                for a uniform st kernel, and t when the model carries no
-                non-decision-time variability. Only works if all trials share a
-                single value of each metadata entry the helper reads.
-                Defaults to False.
+                for a uniform st kernel, t + loc - 3*scale for an unbounded
+                Normal kernel, and t when the model carries no non-decision-time
+                variability. Only works if all trials share a single value of
+                each metadata entry the helper reads. Defaults to False.
 
         Raises:
         -------
@@ -585,22 +585,31 @@ def _unique_variability_value(values, name: str) -> float:
 
 
 def _recover_admissibility_boundary(metadata: dict) -> float:
-    """Recover the true admissibility boundary rt = t - st for a *_st model.
+    """Recover the RT displacement boundary of a model with variable ndt.
 
-    'st' is usually not stored as its own metadata key - it is folded into
-    metadata['t_dist'], a functools.partial of scipy.stats.uniform.rvs with
-    loc=-st, scale=2*st, so the ndt window is Uniform(t - st, t + st) and the
-    boundary is t + loc = t - st.
+    The boundary is the lowest RT the model's non-decision-time kernel admits,
+    which is what displace_t shifts RTs by. It is read from whichever metadata
+    shape the model uses:
+
+    * a plain numeric 'st' entry (full_ddm, full_ddm2): the boundary is t - st.
+    * a functools.partial 't_dist' over a bounded kernel (ddm_st: uniform.rvs
+      with loc=-st, scale=2*st, so ndt is Uniform(t - st, t + st)): loc is the
+      kernel's lower support edge, so the boundary is t + loc = t - st.
+    * a functools.partial 't_dist' over a Normal kernel (ddm_normal_st, ddm_sdv):
+      ndt is Normal(t + loc, scale), whose support is unbounded, so there is no
+      support edge to recover. The boundary is the practical t + loc - 3*scale
+      floor, below which ~0.13% of the kernel's mass lies - a numerical-safety
+      convention, not a claim about the model's support.
 
     Metadata carrying neither 'st' nor 't_dist' comes from a model with no ndt
     variability, whose boundary is t, and t is returned.
 
     Raises ValueError when the boundary is ambiguous (multiple t values,
-    multiple st values, a t_dist loc holding more than one value), when the
-    variability metadata is malformed, or when any of it is non-finite, which
-    would make the boundary NaN or infinite and shift every RT by garbage. A
-    per-trial st broadcast to one repeated value is not ambiguous and is
-    accepted.
+    multiple st values, a t_dist loc or Normal scale holding more than one
+    value), when the variability metadata is malformed, or when any of it is
+    non-finite, which would make the boundary NaN or infinite and shift every
+    RT by garbage. A per-trial st, loc or scale broadcast to one repeated value
+    is not ambiguous and is accepted.
     """
     t = _unique_variability_value(metadata["t"], "t")
 
@@ -623,7 +632,21 @@ def _recover_admissibility_boundary(metadata: dict) -> float:
             "metadata['t_dist'] is not a functools.partial carrying keywords - "
             "boundary recovery only supports models carrying st."
         )
+
+    # loc places the kernel relative to t in both shapes below: it is the lower
+    # support edge of a bounded kernel and the center of an unbounded one.
     loc = keywords.get("loc", None)
     if loc is None:
         raise ValueError("metadata['t_dist'] has no 'loc' keyword.")
-    return t + _unique_variability_value(loc, "t_dist loc")
+    loc = _unique_variability_value(loc, "t_dist loc")
+
+    # A Normal t_dist has no finite lower support edge, so its boundary is the
+    # practical 3*scale floor below the kernel's center rather than an edge of
+    # the kernel: ~0.13% of the ndt mass falls below it.
+    dist_obj = getattr(t_dist.func, "__self__", None)
+    if getattr(dist_obj, "name", None) == "norm":
+        scale = keywords.get("scale", None)
+        if scale is None:
+            raise ValueError("metadata['t_dist'] (Normal) has no 'scale' keyword.")
+        return t + loc - 3.0 * _unique_variability_value(scale, "t_dist scale")
+    return t + loc
