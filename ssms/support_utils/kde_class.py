@@ -596,6 +596,18 @@ def _recover_admissibility_boundary(metadata: dict) -> float:
             "metadata has neither 'st' nor a functools.partial 't_dist' - "
             "boundary recovery only supports models carrying st."
         )
+
+    # Normal-family t_dist (e.g. t_actual ~ Normal(t, st)) has no finite
+    # lower support edge - loc is the kernel's center, not a boundary. Use
+    # the practical t - 3*scale floor (~99.7% of the kernel's mass lies
+    # within 3 standard deviations): a numerical-safety convention, not a
+    # claim about the model's true (unbounded) support.
+    dist_obj = getattr(t_dist.func, "__self__", None)
+    if getattr(dist_obj, "name", None) == "norm":
+        scale = t_dist.keywords.get("scale", None)
+        if scale is None:
+            raise ValueError("metadata['t_dist'] (Normal) has no 'scale' keyword.")
+        return t - 3.0 * float(np.asarray(scale).ravel()[0])
     loc = t_dist.keywords.get("loc", None)
     if loc is None:
         raise ValueError("metadata['t_dist'] has no 'loc' keyword.")

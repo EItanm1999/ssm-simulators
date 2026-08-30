@@ -56,6 +56,51 @@ def get_ddm_st_config():
     }
 
 
+def get_ddm_normalt_config():
+    """Get configuration for DDM with untruncated-normal non-decision time."""
+    return {
+        "name": "ddm_normalt",
+        "params": ["v", "a", "z", "t", "st"],
+        "param_bounds": [
+            [-3.0, 0.3, 0.3, 0.25, 1e-3],
+            [3.0, 2.5, 0.7, 2.25, 0.25],
+        ],
+        "boundary_name": "constant",
+        "boundary": bf.constant,
+        "n_params": 5,
+        "default_params": [0.0, 1.0, 0.5, 0.25, 1e-3],
+        "nchoices": 2,
+        "choices": [-1, 1],
+        "n_particles": 1,
+        "simulator": cssm.full_ddm_rv,
+        "simulator_fixed_params": {
+            "z_dist": functools.partial(sps.norm.rvs, loc=0, scale=0),
+            "v_dist": functools.partial(sps.norm.rvs, loc=0, scale=0),
+        },
+        "simulator_param_mappings": {
+            "t_dist": lambda st: functools.partial(sps.norm.rvs, loc=0, scale=st),
+        },
+        "parameter_transforms": {
+            "sampling": [],
+            "simulation": [
+                LambdaAdaptation(
+                    lambda theta, cfg, n: (
+                        theta.update(
+                            {
+                                "z_dist": cfg["simulator_fixed_params"]["z_dist"],
+                                "v_dist": cfg["simulator_fixed_params"]["v_dist"],
+                            }
+                        )
+                        or theta
+                    ),
+                    name="set_fixed_params",
+                ),
+                ApplyMapping("st", "t_dist", "t_dist"),
+            ],
+        },
+    }
+
+
 def get_ddm_truncnormt_config():
     """Get configuration for DDM with truncated normal non-decision time."""
     return {
