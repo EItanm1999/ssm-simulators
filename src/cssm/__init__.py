@@ -33,12 +33,17 @@ from .lba_models import lba_vanilla, lba_angle, rlwm_lba_pw_v1, rlwm_lba_race
 
 from .sequential_models import (
     ddm_flexbound_seq2,
+    ddm_flexbound_seq2_sv,
     ddm_flexbound_mic2_ornstein,
     ddm_flexbound_mic2_multinoise,
     ddm_flexbound_mic2_ornstein_multinoise,
     ddm_flexbound_mic2_unnormalized_ornstein_multinoise,
 )
-from .parallel_models import ddm_flexbound_par2
+from .parallel_models import (
+    ddm_flexbound_par2,
+    ddm_flexbound_par2_sv,
+    ddm_flexbound_par3,
+)
 
 from .levy_models import levy_flexbound
 
@@ -71,12 +76,15 @@ __all__ = [
     "rlwm_lba_race",
     # Sequential models
     "ddm_flexbound_seq2",
+    "ddm_flexbound_seq2_sv",
     "ddm_flexbound_mic2_ornstein",
     "ddm_flexbound_mic2_multinoise",
     "ddm_flexbound_mic2_ornstein_multinoise",
     "ddm_flexbound_mic2_unnormalized_ornstein_multinoise",
     # Parallel models
     "ddm_flexbound_par2",
+    "ddm_flexbound_par2_sv",
+    "ddm_flexbound_par3",
     # Levy models
     "levy_flexbound",
     # Ornstein models

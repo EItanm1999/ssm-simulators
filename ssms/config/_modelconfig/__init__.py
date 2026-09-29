@@ -49,6 +49,12 @@ from .ddm_par2 import (
     get_ddm_par2_no_bias_config,
     get_ddm_par2_weibull_no_bias_config,
 )
+from .ddm_par2_sv import (
+    get_ddm_par2_sv_no_bias_config,
+)
+from .ddm_par3 import (
+    get_ddm_par3_config,
+)
 from .ddm_random import (
     get_ddm_rayleight_config,
     get_ddm_sdv_config,
@@ -61,6 +67,9 @@ from .ddm_seq2 import (
     get_ddm_seq2_conflict_gamma_no_bias_config,
     get_ddm_seq2_no_bias_config,
     get_ddm_seq2_weibull_no_bias_config,
+)
+from .ddm_seq2_sv import (
+    get_ddm_seq2_sv_no_bias_config,
 )
 from .dev_rlwm_lba import (
     get_dev_rlwm_lba_pw_v1_config,
@@ -201,11 +210,14 @@ def get_model_config():
         "ddm_par2_conflict_gamma_no_bias": get_ddm_par2_conflict_gamma_no_bias_config(),
         "ddm_par2_angle_no_bias": get_ddm_par2_angle_no_bias_config(),
         "ddm_par2_weibull_no_bias": get_ddm_par2_weibull_no_bias_config(),
+        "ddm_par2_sv_no_bias": get_ddm_par2_sv_no_bias_config(),
+        "ddm_par3": get_ddm_par3_config(),
         "ddm_seq2": get_ddm_seq2_config(),
         "ddm_seq2_no_bias": get_ddm_seq2_no_bias_config(),
         "ddm_seq2_conflict_gamma_no_bias": get_ddm_seq2_conflict_gamma_no_bias_config(),
         "ddm_seq2_angle_no_bias": get_ddm_seq2_angle_no_bias_config(),
         "ddm_seq2_weibull_no_bias": get_ddm_seq2_weibull_no_bias_config(),
+        "ddm_seq2_sv_no_bias": get_ddm_seq2_sv_no_bias_config(),
         "ddm_mic2_adj": get_ddm_mic2_adj_config(),
         "ddm_mic2_adj_no_bias": get_ddm_mic2_adj_no_bias_config(),
         "ddm_mic2_adj_conflict_gamma_no_bias": get_ddm_mic2_adj_conflict_gamma_no_bias_config(),
@@ -327,11 +339,14 @@ __all__ = [
     "get_ddm_par2_conflict_gamma_no_bias_config",
     "get_ddm_par2_angle_no_bias_config",
     "get_ddm_par2_weibull_no_bias_config",
+    "get_ddm_par2_sv_no_bias_config",
+    "get_ddm_par3_config",
     "get_ddm_seq2_config",
     "get_ddm_seq2_no_bias_config",
     "get_ddm_seq2_conflict_gamma_no_bias_config",
     "get_ddm_seq2_angle_no_bias_config",
     "get_ddm_seq2_weibull_no_bias_config",
+    "get_ddm_seq2_sv_no_bias_config",
     "get_ddm_mic2_adj_config",
     "get_ddm_mic2_adj_no_bias_config",
     "get_ddm_mic2_adj_conflict_gamma_no_bias_config",
